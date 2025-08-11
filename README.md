@@ -31,7 +31,7 @@ A built-in LLM-powered chatbot lets you ask natural language questions — even 
    ```
 3. Open http://localhost:3000 and upload your first Excel file.
 
-📌 Roadmap
+## 📌 Roadmap
  - Custom pivot table builder in the UI
  - User-confirmed relation editing
  - Support for CSV/Google Sheets
