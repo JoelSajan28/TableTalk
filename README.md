@@ -1,4 +1,4 @@
-# TabulaRAG — Conversational Analytics for Your Excel Data
+# TableTalk — Conversational Analytics for Your Excel Data
 
 **TabulaRAG** is a web application that transforms your Excel files into an intelligent, query-ready database.  
 Each worksheet becomes its own MongoDB collection, pivot tables are generated automatically, and relations between tables are detected.  
@@ -32,13 +32,10 @@ A built-in LLM-powered chatbot lets you ask natural language questions — even 
 3. Open http://localhost:3000 and upload your first Excel file.
 
 📌 Roadmap
- Custom pivot table builder in the UI
-
- User-confirmed relation editing
-
- Support for CSV/Google Sheets
-
- Fine-tuned SQL/NoSQL query generation model
+ - Custom pivot table builder in the UI
+ - User-confirmed relation editing
+ - Support for CSV/Google Sheets
+ - Fine-tuned SQL/NoSQL query generation model
 
 Why TabulaRAG?
 Because your spreadsheets deserve more than static cells — they deserve to talk back.
