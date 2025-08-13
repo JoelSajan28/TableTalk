@@ -1,0 +1,24 @@
+# Core backend
+fastapi==0.111.0
+uvicorn[standard]==0.30.0
+python-multipart==0.0.9
+
+# Data processing
+pandas==2.2.2
+openpyxl==3.1.5     
+
+# Database
+pymongo==4.7.2      
+
+# Frontend UI
+streamlit==1.36.0
+requests==2.32.3    
+
+# Optional: string similarity for relation detection
+rapidfuzz==3.9.6
+
+# Environment variables
+python-dotenv==1.0.1
+
+# For LLM integration (Ollama)
+httpx==0.27.0
