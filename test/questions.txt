@@ -1,0 +1,14 @@
+Testing:
+
+“Show the first 5 users with their total account balance (sum across all their accounts).”
+“List the top 10 users by total spend (sum of transaction amounts across all their accounts). Include user name and total_spend.”
+“For each user, show number of accounts and number of cards on file. Return the top 15 by number of accounts.”
+“Find users who opened an account in 2022 and made at least one transaction in 2023. Return user name and the count of their 2023 transactions.”
+“Which 10 merchants have the highest total spend from users in California? Show merchant and total amount.”
+“Give me the top 10 users by average transaction amount (avg over all their accounts’ transactions), only where they have at least 20 transactions.”
+“For each card brand, show how many distinct users hold that brand and their combined total spend (join via users → accounts → transactions). Return top 5 brands by total spend.”
+“Show the last 10 transactions (by date) with the user name and their account type.”
+“Which users have both a ‘savings’ account and a ‘checking’ account and have spent more than 5,000 in total? Return user name and total spend.”
+“For each state, list the number of users, total accounts, and total transaction amount. Return the top 10 states by total transaction amount.”
+"For each user, list their name, account type, card brand, and the total transaction amount they made. Return the top 20 by total amount."
+"Which merchants had transactions in 2023 from users who hold VISA cards? Show merchant, user name, card brand, and total spend. Return top 15 merchants."

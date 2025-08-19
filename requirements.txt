@@ -1,22 +1,20 @@
-# --- API server ---
+# Core backend
 fastapi==0.111.0
 uvicorn[standard]==0.30.0
 python-multipart==0.0.9
 
-# --- SQL / DB (we use SQLite via SQLAlchemy) ---
-SQLAlchemy==2.0.31
-
-# --- Data & Excel ---
+# Data processing
 pandas==2.2.2
-openpyxl==3.1.5      # .xlsx support
-xlrd==2.0.1          # .xls support
+openpyxl==3.1.5
 
-# --- LLM client ---
-requests==2.32.3     # used to call Ollama or hosted APIs
+# SQLAlchemy (recommended for engines & transactions)
+SQLAlchemy==2.0.32
 
-# --- Frontend (Streamlit app) ---
+# Frontend
 streamlit==1.36.0
+requests==2.32.3
+httpx==0.27.0
 
-# --- Optional helpers ---
-rapidfuzz==3.9.6     # (optional) fuzzy matching for table detection
-python-dotenv==1.0.1 # load env vars in dev
+# Optional helpers
+python-dotenv==1.0.1
+rapidfuzz==3.9.6
