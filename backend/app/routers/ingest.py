@@ -2,15 +2,16 @@ from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from pathlib import Path
 import tempfile
 from sqlalchemy import text
-from app.db.sqlite import engine
+from app.db.sqlite import get_engine_for
 from app.services.excel_to_sqlite import ingest_excel_to_sqlite
 from app.schemas.ingest_sqlite import IngestSqliteResponse
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 @router.get("/tables")
-def list_tables():
-    with engine.connect() as conn:
+def list_tables(dataset: str = Form(..., description="Dataset name (prefix for tables)")):
+    engine , _ = get_engine_for(dataset)
+    with engine(dataset).connect() as conn:
         rows = conn.execute(text("SELECT * FROM tables_metadata")).mappings().all()
     return {"tables": rows}
 
@@ -32,7 +33,7 @@ async def ingest_excel(
         result = ingest_excel_to_sqlite(tmp_path, dataset=dataset)
         return {
             "filename": file.filename,
-            "sqlite_path": "env: SQLITE_PATH or ./data/tabletalk.db",
+            "sqlite_path": result["sqlite_path"],
             "dataset": result["dataset"],
             "tables": result["tables"],
         }

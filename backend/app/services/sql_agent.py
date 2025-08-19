@@ -5,16 +5,16 @@ import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from app.db.sqlite import engine
+from app.db.sqlite import get_engine_for
 
 # -------- Ollama client --------
 import requests
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi4")
 
-def _ollama_chat(messages: List[Dict[str, str]], temperature: float = 0.0) -> str:
+def _ollama_chat(messages: List[Dict[str, str]], temperature: float = 0.0, model: Optional[str] = None) -> str:
     payload = {
-        "model": OLLAMA_MODEL,
+        "model": model,
         "stream": False,
         "messages": messages,
         "options": {"temperature": temperature},
@@ -178,9 +178,9 @@ def _try_execute_with_repair(conn, sql: str) -> pd.DataFrame:
 # -------- Few-shots (no triple quotes) --------
 FEW_SHOTS = (
     "Examples (use exact table names and only available columns):\n"
-    "Q: first 2 customers -> SELECT * FROM {dataset}__customers ORDER BY 1 LIMIT 2\n"
-    "Q: first 5 orders -> SELECT * FROM {dataset}__orders ORDER BY 1 LIMIT 5\n"
-    "Q: total number of customers -> SELECT COUNT(*) AS total_customers FROM {dataset}__customers\n"
+    "Q: first 2 customers -> SELECT * FROM customers ORDER BY 1 LIMIT 2\n"
+    "Q: first 5 orders -> SELECT * FROM orders ORDER BY 1 LIMIT 5\n"
+    "Q: total number of customers -> SELECT COUNT(*) AS total_customers FROM customers\n"
     "\n"
     "IMPORTANT: Do NOT add joins, GROUP BY, or conditions unless the question explicitly asks.\n"
 )
@@ -211,14 +211,19 @@ def _likely_table_hint(question: str, tables: List[Dict[str, Any]]) -> str:
 _SYSTEM = (
     "You are a careful data analyst who writes SQLite.\n"
     "Rules:\n"
-    " - Return ONLY one SQL statement.\n"
+    " - Return ONLY one SQL statement, nothing else.\n"
     " - NO explanations, NO Markdown, NO analysis.\n"
     " - Use EXACT table names and column names from schema.\n"
+    " - When using JOINs, ALWAYS use short aliases (u, a, o, etc.).\n"
+    " - Fully-qualify every column in SELECT, WHERE, GROUP BY, HAVING, ORDER BY (e.g., u.user_id).\n"
+    " - Never leave bare column names if multiple tables are joined.\n"
     " - If the question mentions 'customers', only use the table with 'customer' in its name.\n"
     " - If it mentions 'orders', only use the table with 'order' in its name.\n"
     " - If it mentions 'students', only use the table with 'student' in its name.\n"
     " - If it mentions 'schools', only use the table with 'school' in its name.\n"
-    " - Never invent or substitute tables."
+    " - Never invent or substitute tables.\n"
+    " - If the user asks to list tables or schema, return an SQL that selects name and columns "
+    "from the metadata table (tables_metadata).\n"
 )
 
 # detect smalltalk
@@ -252,9 +257,9 @@ def answer_question(
     question: str,
     max_rows: int = 50,
     model: Optional[str] = None,
-    sql_engine: Engine = engine,
 ) -> Dict[str, Any]:
-
+    
+    sql_engine, _ = get_engine_for(dataset)
     # smalltalk → friendly error (no 400)
     if _SMALLTALK.match((question or "").strip()):
         return {
@@ -288,6 +293,7 @@ def answer_question(
     raw = _ollama_chat(
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user_prompt}],
         temperature=0.0,
+        model=model
     )
     print("Ollama")
     print(raw)

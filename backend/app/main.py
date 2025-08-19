@@ -6,6 +6,7 @@ app = FastAPI(
     title="TableTalk API",
     version="0.2.0",
     description="Upload Excel → SQLite, then ask questions in natural language.",
+    debug=True
 )
 
 app.add_middleware(
