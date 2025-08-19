@@ -3,141 +3,108 @@ import requests
 import streamlit as st
 import pandas as pd
 
-# Backends
+# ---------------- Config ----------------
 BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:8000")
 
-# Ollama
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
-DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama2-uncensored")  # change if you pulled a different model
-
 st.set_page_config(page_title="TableTalk — Ingest + Chat", layout="wide")
-st.title("📊 TableTalk — Excel → SQLite Ingestion")
+st.title("📊 TableTalk — Excel → SQLite + Chat")
 
-st.caption(f"API: {BACKEND_URL} • Ollama: {OLLAMA_URL}")
-
-# ---------------------------
-# Ingest panel (your existing part)
-# ---------------------------
+# ---------------- Ingest ----------------
 with st.sidebar:
-    st.header("Upload")
+    st.header("📂 Upload Excel → SQLite")
     dataset = st.text_input("Dataset name (prefix for tables)", value="demo_dataset")
-    uploaded = st.file_uploader("Choose an Excel file (.xlsx or .xls)", type=["xlsx", "xls"])
-    run = st.button("Ingest via API")
+    uploaded = st.file_uploader("Choose Excel (.xlsx or .xls)", type=["xlsx", "xls"])
+    run = st.button("Ingest")
 
 if run and not uploaded:
-    st.warning("Please select a file first.")
+    st.warning("⚠️ Please select a file first.")
 elif run and not dataset.strip():
-    st.warning("Please enter a dataset name.")
+    st.warning("⚠️ Please enter a dataset name.")
 
-if uploaded and run and dataset.strip():
-    st.info("Uploading to backend…")
+if run and uploaded and dataset.strip():
+    st.info("⏳ Uploading to backend…")
     files = {
         "file": (
             uploaded.name,
             uploaded.getvalue(),
-            uploaded.type or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            uploaded.type or "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     }
     data = {"dataset": dataset.strip()}
-
     try:
         resp = requests.post(f"{BACKEND_URL}/ingest/excel", files=files, data=data, timeout=180)
         if resp.status_code != 200:
-            st.error(f"Backend error {resp.status_code}: {resp.text}")
+            st.error(f"❌ Backend error {resp.status_code}: {resp.text}")
         else:
             payload = resp.json()
-            st.success("Ingested successfully!")
-
-            st.subheading = st.subheader("Ingestion Summary")
+            st.success("✅ Ingested successfully!")
+            st.subheader("Ingestion Summary")
             st.write(f"**File:** {payload.get('filename')}")
             st.write(f"**SQLite path:** {payload.get('sqlite_path')}")
             st.write(f"**Dataset:** `{payload.get('dataset')}`")
-
             tables = payload.get("tables", [])
             st.write(f"**Tables created:** {len(tables)}")
-
             if tables:
                 df = pd.DataFrame(tables)
                 if "columns" in df.columns:
                     df["columns"] = df["columns"].apply(lambda cols: ", ".join(map(str, cols)))
                 st.dataframe(df, use_container_width=True)
     except Exception as e:
-        print(f"⚠️ Backend error: {e}")
-# ---------------------------
-# Chat (Ollama) panel
-# ---------------------------
+        st.error(f"⚠️ Backend error: {e}")
+
+# ---------------- Chat (NL→SQL via backend) ----------------
 st.markdown("---")
-st.header("💬 Chat (Ollama)")
+st.header("💬 Chat with your dataset")
 
-# Model selector + system prompt
-with st.sidebar:
-    st.header("Chat Settings")
-    model = st.text_input("Ollama model", value=DEFAULT_MODEL, help="e.g., llama3, mistral, qwen2, etc.")
-    sys_prompt = st.text_area(
-        "System prompt (optional)",
-        value="You are a helpful assistant.",
-        height=80,
-        help="Set the assistant behavior.",
-    )
+# persist dataset name
+if "dataset" not in st.session_state:
+    st.session_state.dataset = dataset.strip()
 
-# Initialize chat history
+# persist chat history
 if "chat_messages" not in st.session_state:
-    st.session_state.chat_messages = [
-        {"role": "system", "content": sys_prompt or "You are a helpful assistant."}
-    ]
+    st.session_state.chat_messages = []
 
-# Render past messages (skip the internal system message)
-for m in [m for m in st.session_state.chat_messages if m["role"] != "system"]:
+# render history
+for m in st.session_state.chat_messages:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
 
-# Chat input
-user_input = st.chat_input("Type a message (e.g., 'how are you?')")
-
-def ask_ollama(messages, model_name: str):
-    """
-    Call Ollama /api/chat with a messages array.
-    We set stream=false to get a single consolidated response.
-    """
+# helper: call backend
+def ask_backend(dataset: str, question: str, max_rows: int = 50):
     try:
-        payload = {
-            "model": "llama2-uncensored",
-            "stream": False,
-            "messages": [
-                { "role": "user", "content": user_input }
-            ]
-        }
-        r = requests.post(OLLAMA_URL, json=payload, timeout=120)
-        r.raise_for_status()
-        data = r.json()
-        # Ollama returns: { "message": {"role": "assistant", "content": "..."} , ... }
-        content = (data.get("message") or {}).get("content", "")
-        if not content:
-            content = data.get("response", "")  # fallback for older formats
-        return content
-    except Exception as e:
-        return f"⚠️ Ollama error: {e}"
+        r = requests.post(
+            f"{BACKEND_URL}/ask",
+            json={"dataset": dataset, "question": question, "max_rows": max_rows},
+            timeout=180,
+        )
+        if r.status_code != 200:
+            return {"error": f"Backend returned {r.status_code}: {r.text}"}
+        return r.json()
+    except requests.exceptions.RequestException as e:
+        return {"error": str(e)}
 
-if user_input:
-    # Update the stored system prompt if changed
-    if st.session_state.chat_messages and st.session_state.chat_messages[0]["role"] == "system":
-        st.session_state.chat_messages[0]["content"] = sys_prompt or "You are a helpful assistant."
-
-    # Show user message
-    st.session_state.chat_messages.append({"role": "user", "content": user_input})
+# input
+prompt = st.chat_input("Ask me (e.g., 'get me the first 2 customers', 'show top 3 orders by amount')")
+if prompt:
+    st.session_state.chat_messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
-        st.markdown(user_input)
+        st.markdown(prompt)
 
-    # Build a short context for Ollama (system + last N turns)
-    # Keeping it small so local models respond quickly
-    history = st.session_state.chat_messages[-8:]  # last few turns is enough
+    out = ask_backend(st.session_state.dataset, prompt, 50)
 
-    # Ask Ollama
-    answer = ask_ollama(history, model)
-    st.session_state.chat_messages.append({"role": "assistant", "content": answer})
+    if "error" in out:
+        answer_md = f"⚠️ {out['error']}"
+    else:
+        sql = out.get("sql", "")
+        rows = out.get("rows", [])
+        answer_md = f"**SQL**\n```sql\n{sql}\n```\n"
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True)
+            answer_md += f"\nReturned **{len(rows)}** row(s)."
+        else:
+            answer_md += "_No rows returned._"
 
-    # Show assistant message
+    st.session_state.chat_messages.append({"role": "assistant", "content": answer_md})
     with st.chat_message("assistant"):
-        st.markdown(answer)
-
-st.caption("Tip: change `OLLAMA_URL` or `OLLAMA_MODEL` via env vars if your setup differs.")
+        st.markdown(answer_md)

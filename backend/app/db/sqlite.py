@@ -1,14 +1,7 @@
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import Engine
-from pathlib import Path
 import os
+from sqlalchemy import create_engine
 
-# DB path like "./data/tabularag.db" (create folder if missing)
-DB_PATH = os.getenv("SQLITE_PATH", "./data/tabletalk.db")
-Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+SQLITE_PATH = os.getenv("SQLITE_PATH", "./data/tabletalk.db")
+os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 
-engine: Engine = create_engine(f"sqlite:///{DB_PATH}", future=True)
-
-def execute(sql: str, **params):
-    with engine.begin() as conn:
-        return conn.execute(text(sql), params)
+engine = create_engine(f"sqlite:///{SQLITE_PATH}", future=True)

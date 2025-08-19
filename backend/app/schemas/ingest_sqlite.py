@@ -1,11 +1,10 @@
 from typing import List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 class TableInfo(BaseModel):
-    worksheet: str = Field(..., description="Original worksheet name")
-    table: str = Field(..., description="SQLite table name created for this sheet")
-    row_count: int = Field(..., description="Rows written to SQLite")
-    columns: List[str] = Field(..., description="Normalized column names")
+    name: str
+    columns: List[str]
+    rows: int
 
 class IngestSqliteResponse(BaseModel):
     filename: str
