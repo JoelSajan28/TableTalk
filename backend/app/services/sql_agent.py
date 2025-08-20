@@ -287,16 +287,16 @@ def answer_question(
         "Return ONLY one valid SQLite query. No extra text.\n"
         f"{FEW_SHOTS.format(dataset=dataset)}"
     )
-    print("USER PROMPT")
-    print(user_prompt)
+    # print("USER PROMPT")
+    # print(user_prompt)
     # ask model
     raw = _ollama_chat(
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user_prompt}],
         temperature=0.0,
         model=model
     )
-    print("Ollama")
-    print(raw)
+    # print("Ollama")
+    # print(raw)
     # extract SQL
     sql = _extract_sql(raw or "")
     if not sql:
