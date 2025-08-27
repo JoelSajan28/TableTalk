@@ -7,25 +7,31 @@ from sqlalchemy.engine import Engine
 
 from app.db.sqlite import get_engine_for
 
-# -------- Ollama client --------
-import requests
-OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434/api/chat")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi4")
+from openai import OpenAI
+import os
 
-def _ollama_chat(messages: List[Dict[str, str]], temperature: float = 0.0, model: Optional[str] = None) -> str:
-    payload = {
-        "model": model,
-        "stream": False,
-        "messages": messages,
-        "options": {"temperature": temperature},
-    }
-    r = requests.post(OLLAMA_URL, json=payload, timeout=120)
-    r.raise_for_status()
-    data = r.json()
-    return (data.get("message") or {}).get("content") or data.get("response") or ""
+# Configure OpenRouter client
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("OPENROUTER_API_KEY"),
+)
+
+def _ollama_chat(messages: list[dict], temperature: float = 0.0, model: str | None = None) -> str:
+    mdl = os.getenv("OLLAMA_MODEL", "microsoft/phi-4")
+
+    completion = client.chat.completions.create(
+        model=mdl,
+        messages=messages,
+        temperature=temperature,
+        extra_headers={
+            "HTTP-Referer": "http://localhost:8501",  
+            "X-Title": "TableTalk",                  
+        },
+    )
+
+    return completion.choices[0].message.content
 
 
-# -------- Safety --------
 _FORBIDDEN = re.compile(
     r"\b(DELETE|UPDATE|INSERT|REPLACE|ALTER|DROP|TRUNCATE|ATTACH|DETACH|PRAGMA|VACUUM|CREATE)\b",
     re.I,
@@ -42,7 +48,6 @@ def _ensure_limit(sql: str, n: int) -> str:
     return f"{s} LIMIT {int(n)}"
 
 
-# -------- Schema helpers --------
 def _dataset_tables(conn, dataset: str) -> List[Dict[str, Any]]:
     rows = conn.execute(
         text("SELECT name, columns FROM tables_metadata WHERE dataset=:d"),
@@ -61,7 +66,6 @@ def _schema_text(conn, dataset: str) -> str:
     return "\n".join(parts)
 
 
-# -------- LLM text → SQL helpers --------
 _SQL_FENCE = re.compile(r"```sql\s*(.*?)```", re.I | re.S)
 _THINK_TAGS = re.compile(r"<\s*think\s*>.*?<\s*/\s*think\s*>", re.I | re.S)
 
@@ -175,7 +179,6 @@ def _try_execute_with_repair(conn, sql: str) -> pd.DataFrame:
         raise
 
 
-# -------- Few-shots (no triple quotes) --------
 FEW_SHOTS = (
     "Examples (use exact table names and only available columns):\n"
     "Q: first 2 customers -> SELECT * FROM customers ORDER BY 1 LIMIT 2\n"
@@ -185,7 +188,6 @@ FEW_SHOTS = (
     "IMPORTANT: Do NOT add joins, GROUP BY, or conditions unless the question explicitly asks.\n"
 )
 
-# simple hinting
 def _likely_table_hint(question: str, tables: List[Dict[str, Any]]) -> str:
     q = (question or "").lower()
     names = [t["name"] for t in tables]
@@ -217,6 +219,8 @@ _SYSTEM = (
     " - When using JOINs, ALWAYS use short aliases (u, a, o, etc.).\n"
     " - Fully-qualify every column in SELECT, WHERE, GROUP BY, HAVING, ORDER BY (e.g., u.user_id).\n"
     " - Never leave bare column names if multiple tables are joined.\n"
+    " - For any string/text filtering (e.g., WHERE, LIKE, IN), always wrap both column and value with LOWER().\n"
+    "   Example: WHERE LOWER(users.city) = LOWER('san jose')\n"
     " - If the question mentions 'customers', only use the table with 'customer' in its name.\n"
     " - If it mentions 'orders', only use the table with 'order' in its name.\n"
     " - If it mentions 'students', only use the table with 'student' in its name.\n"
@@ -226,10 +230,8 @@ _SYSTEM = (
     "from the metadata table (tables_metadata).\n"
 )
 
-# detect smalltalk
 _SMALLTALK = re.compile(r'^(hi|hello|hey|thanks|thank you|bye)\b', re.I)
 
-# force-limit helpers
 _FIRST_NO_NUM = re.compile(r'\bfirst\b(?!\s*\d)', re.I)
 _NUM_PHRASE  = re.compile(r'\b(?:first|top)\s+(\d+)\b', re.I)
 
@@ -237,10 +239,10 @@ def _force_limit_from_question(question: str, default_max: int) -> Optional[int]
     q = question or ""
     m = _NUM_PHRASE.search(q)
     if m:
-        return int(m.group(1))  # first/top N
+        return int(m.group(1))  
     if _FIRST_NO_NUM.search(q):
-        return 1                # plain "first"
-    return None                 # no override
+        return 1               
+    return None                
 
 def _replace_or_add_limit(sql: str, n: int) -> str:
     s = sql.rstrip().rstrip(";")
@@ -251,7 +253,6 @@ def _replace_or_add_limit(sql: str, n: int) -> str:
     return s
 
 
-# -------- Main entry --------
 def answer_question(
     dataset: str,
     question: str,
@@ -259,8 +260,8 @@ def answer_question(
     model: Optional[str] = None,
 ) -> Dict[str, Any]:
     
+    print(dataset)
     sql_engine, _ = get_engine_for(dataset)
-    # smalltalk → friendly error (no 400)
     if _SMALLTALK.match((question or "").strip()):
         return {
             "sql": None,
@@ -271,14 +272,12 @@ def answer_question(
             "error": "💡 This is not a database question. Please ask something about your tables."
         }
 
-    # read schema
     with sql_engine.begin() as conn:
         tables = _dataset_tables(conn, dataset)
         if not tables:
             return {"error": f"No tables found for dataset '{dataset}'. Ingest first."}
         schema_txt = _schema_text(conn, dataset)
 
-    # build prompt
     hint = _likely_table_hint(question, tables)
     user_prompt = (
         f"User question: {question}\n\n"
@@ -287,32 +286,24 @@ def answer_question(
         "Return ONLY one valid SQLite query. No extra text.\n"
         f"{FEW_SHOTS.format(dataset=dataset)}"
     )
-    # print("USER PROMPT")
-    # print(user_prompt)
-    # ask model
+    
     raw = _ollama_chat(
         [{"role": "system", "content": _SYSTEM}, {"role": "user", "content": user_prompt}],
         temperature=0.0,
         model=model
     )
-    # print("Ollama")
-    # print(raw)
-    # extract SQL
+    
     sql = _extract_sql(raw or "")
     if not sql:
         return {"error": "Could not extract SQL from model response.", "raw": raw}
 
-    # substitute dataset placeholder if the model copied examples
     sql = sql.replace("{dataset}", dataset)
 
-    # safety
     if not _is_safe(sql):
         return {"error": "Only read-only SELECT/WITH queries are allowed.", "sql": sql, "raw": raw}
 
-    # normalize dialect (TOP/FETCH) and compute final limit
     sql_norm, explicit_n = _normalize_to_sqlite(sql)
 
-    # hard override from NL: "first" / "first N"
     override_n = _force_limit_from_question(question, max_rows)
     if override_n is not None:
         final_sql = _replace_or_add_limit(sql_norm, override_n)
@@ -325,9 +316,6 @@ def answer_question(
     try:
         with sql_engine.begin() as conn:
             df = _try_execute_with_repair(conn, final_sql)
-            # conn.execute(text("DROP TABLE IF EXISTS demo_dataset__students"))
-            # conn.execute(text("DROP TABLE IF EXISTS demo_dataset__schools"))
-            # conn.execute(text("DELETE FROM tables_metadata WHERE name IN ('dataset__students', 'dataset__schools')"))
     except Exception as e:
         return {"error": f"SQL execution failed: {e}", "sql": final_sql, "raw": raw}
 

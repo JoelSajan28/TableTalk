@@ -15,25 +15,33 @@ with st.sidebar:
     uploaded = st.file_uploader("Choose Excel (.xlsx or .xls)", type=["xlsx", "xls"])
     run = st.button("Ingest")
 
-# Model selection
 with st.sidebar:
     st.markdown("---")
     st.header("⚙️ Model")
     model_choice = st.selectbox(
         "Choose LLM (for NL→SQL)",
         options=["phi4", "deepseek-r1", "llama2-uncensored"],
-        index=0,  # default = phi4
+        index=0,
         help="Model used to convert your question into SQL"
     )
 
-# keep session dataset synced with the text input when non-empty
+# keep dataset name in session (helps chat input after ingest)
 if dataset_input.strip():
     st.session_state["dataset"] = dataset_input.strip()
 
-def set_active_dataset_from_payload(payload: dict, fallback: str):
+def _set_dataset_from_payload(payload: dict, fallback: str):
     name = (payload.get("dataset") or fallback or "").strip()
     if name:
         st.session_state["dataset"] = name
+
+def _clear_chat_session(reason: str = ""):
+    # Clear only app-related state, keep model selection
+    st.session_state.pop("chat_messages", None)
+    st.session_state.pop("last_ingested_key", None)
+    # You can also clear any other custom state here if needed
+    # st.session_state.pop("some_cache", None)
+    if reason:
+        st.info(reason)
 
 if run:
     if not uploaded:
@@ -56,9 +64,16 @@ if run:
                 st.error(f"❌ Backend error {resp.status_code}: {resp.text}")
             else:
                 payload = resp.json()
-                st.success("✅ Ingested successfully!")
-                set_active_dataset_from_payload(payload, dataset_input)
 
+                # -------- CLEAR OLD SESSION WHEN NEW EXCEL IS INGESTED --------
+                new_key = f"{payload.get('dataset','') }::{payload.get('filename','')}"
+                if st.session_state.get("last_ingested_key") != new_key:
+                    _clear_chat_session("🧹 Cleared previous chat session for the new Excel.")
+                st.session_state["last_ingested_key"] = new_key
+                _set_dataset_from_payload(payload, dataset_input)
+                # --------------------------------------------------------------
+
+                st.success("✅ Ingested successfully!")
                 st.subheader("Ingestion Summary")
                 st.write(f"**File:** {payload.get('filename')}")
                 st.write(f"**SQLite path:** {payload.get('sqlite_path')}")
@@ -78,7 +93,6 @@ if run:
 st.markdown("---")
 st.header("💬 Chat with your dataset")
 
-# init chat history
 if "chat_messages" not in st.session_state:
     st.session_state.chat_messages = []
 
@@ -87,7 +101,6 @@ def current_dataset() -> str:
 
 st.caption(f"Active dataset: `{current_dataset() or '— not set —'}` • Model: `{model_choice}`")
 
-# render history
 for m in st.session_state.chat_messages:
     with st.chat_message(m["role"]):
         st.markdown(m["content"])
@@ -107,7 +120,7 @@ def ask_backend(ds: str, question: str, model: str, max_rows: int = 50):
     except requests.exceptions.RequestException as e:
         return {"error": str(e)}
 
-prompt = st.chat_input("Ask (e.g., 'get me the first 2 customers', 'show top 3 orders by amount')")
+prompt = st.chat_input("Ask (e.g., 'get me the meta data table')")
 if prompt:
     st.session_state.chat_messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):

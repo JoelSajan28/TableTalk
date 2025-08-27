@@ -23,7 +23,7 @@ class AskResponse(BaseModel):
 
 @router.post("", response_model=AskResponse)
 def ask(req: AskRequest):
-    out = answer_question(req.dataset, req.question, req.max_rows, model=req.model)
+    out = answer_question(req.dataset.lower(), req.question, req.max_rows, model=req.model)
     if "error" in out:
         # return as 200 so Streamlit can show the error inside chat
         return AskResponse(**{
