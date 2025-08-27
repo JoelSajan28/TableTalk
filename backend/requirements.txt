@@ -10,11 +10,6 @@ openpyxl==3.1.5
 # SQLAlchemy (recommended for engines & transactions)
 SQLAlchemy==2.0.32
 
-# Frontend
-streamlit==1.36.0
-requests==2.32.3
-httpx==0.27.0
-
 # Optional helpers
 python-dotenv==1.0.1
 rapidfuzz==3.9.6
