@@ -1,0 +1,4 @@
+*.pyc
+*.pyc
+*.pyc
+/backend/app/db/__pycache__
