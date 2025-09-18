@@ -30,6 +30,20 @@ A built-in LLM-powered chatbot lets you ask natural language questions — even 
 ### Prerequisites
 - [Podman](https://podman.io/) or Docker installed  
 - Python 3.10+ if running locally  
+- [Ollama](https://ollama.ai/) installed for running local LLMs  
+
+---
+
+### 🔧 Install Ollama
+Follow the official instructions: https://ollama.ai/download
+Once installed, pull the **Phi-4** model:
+
+```bash
+ollama pull phi4
+```
+
+You can test it with:
+ollama run phi4 "Hello, world!"
 
 ### Run with Podman
 ```bash
