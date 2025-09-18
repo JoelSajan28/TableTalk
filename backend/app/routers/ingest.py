@@ -5,8 +5,8 @@ import tempfile
 from sqlalchemy import text
 
 from app.db.sqlite import get_engine_for
-from app.services.excel_to_sqlite import ingest_excel_to_sqlite
-from app.services.common import _safe_name
+from app.services.excel.excel_to_sqlite_service import ingest_excel_to_sqlite
+from app.services.excel.utils.names import safe_name
 from app.schemas.ingest_sqlite import IngestSqliteResponse  # response model with diagnostics
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
@@ -44,7 +44,7 @@ def list_tables(
     """
     List registered tables for a given dataset from tables_metadata.
     """
-    ds_key = _safe_name(dataset)
+    ds_key = safe_name(dataset)
     engine, _ = get_engine_for(ds_key)
     with engine.begin() as conn:
         rows = conn.execute(

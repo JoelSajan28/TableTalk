@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, Literal
 
-from app.services.sql_agent import answer_question
+from app.agents.sql_agent.sql_agent import answer_question
 
 router = APIRouter(prefix="/ask", tags=["ask"])
 
