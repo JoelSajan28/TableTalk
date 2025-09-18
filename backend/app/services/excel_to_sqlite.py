@@ -1,25 +1,53 @@
 # app/services/excel_to_sqlite.py
+from __future__ import annotations
+
 from pathlib import Path
-import re
+from typing import Dict, List, Set, TypedDict
+
 import pandas as pd
-from sqlalchemy import text
+
 from app.db.sqlite import get_engine_for
-from app.services.excel_preprocessor import ExcelPreprocessor 
+from app.services.excel_preprocessor import ExcelPreprocessor, Diagnostic
+from app.services.common import _safe_name
+from app.services.dataframe_service import _normalize_cols
+from app.constants.sql_query import (
+    SQL_CLEAR_METADATA,
+    SQL_CREATE_METADATA,
+    SQL_UPSERT_METADATA,
+)
 
-def _safe_name(s: str) -> str:
-    s = (s or "").strip().lower()
-    s = re.sub(r"\s+", "_", s)
-    s = re.sub(r"[^a-z0-9_]+", "_", s)
-    s = s.strip("_") or "table"
-    return s
 
-def _normalize_cols(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df.columns = [_safe_name(c) for c in df.columns]
-    return df
+class IngestTable(TypedDict):
+    name: str
+    columns: List[str]
+    rows: int
 
-def ingest_excel_to_sqlite(xlsx_path: Path, dataset: str) -> dict:
-    engine, db_path = get_engine_for(dataset)
+
+def _unique_name(base: str, used: Set[str]) -> str:
+    """Return a unique table name by suffixing _2, _3, ... if needed."""
+    name = base or "table"
+    idx = 2
+    while name in used:
+        name = f"{base}_{idx}"
+        idx += 1
+    used.add(name)
+    return name
+
+
+def ingest_excel_to_sqlite(xlsx_path: Path, dataset: str) -> Dict[str, object]:
+    """
+    Ingest Excel workbook into SQLite with metadata tracking.
+    Returns:
+      {
+        filename, dataset, sqlite_path,
+        tables: [{name, columns, rows}, ...],
+        diagnostics: {
+            items: [ {dataset,sheet,table_name,severity,code,message,handled,suggestion}, ... ],
+            summary: {info: n, warning: n, error: n}
+        }
+      }
+    """
+    engine, db_path = get_engine_for(dataset, fresh=True)
     ds_key = _safe_name(dataset)
 
     prep = ExcelPreprocessor(
@@ -32,44 +60,40 @@ def ingest_excel_to_sqlite(xlsx_path: Path, dataset: str) -> dict:
         infer_numeric=False,
         infer_bool=False,
     )
+
     tables = prep.process_workbook(xlsx_path, ds_key)
 
-    out_tables = []
+    diags: List[Diagnostic] = prep.diagnostics
+    diag_items = [d.__dict__ for d in diags]
+    summary = {"info": 0, "warning": 0, "error": 0}
+    for d in diags:
+        if d.severity in summary:
+            summary[d.severity] += 1
+
+    out_tables: List[IngestTable] = []
     with engine.begin() as conn:
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS tables_metadata (
-                dataset   TEXT NOT NULL,
-                name      TEXT NOT NULL,
-                columns   TEXT,
-                row_count INTEGER,
-                UNIQUE(name)
-            )
-        """))
-        conn.execute(text("DELETE FROM tables_metadata"))
+        conn.execute(SQL_CREATE_METADATA)
+        conn.execute(SQL_CLEAR_METADATA)
 
-        used_names = set()
+        used_names: Set[str] = set()
+
         for t in tables:
-            base = _safe_name(t.name)
-            name = base
-            i = 2
-            while name in used_names:
-                name = f"{base}_{i}"
-                i += 1
-            used_names.add(name)
+            base = _safe_name(t.name) or "table"
+            name = _unique_name(base, used_names)
 
-            df = _normalize_cols(t.df)
-            if df.shape[1] == 0 or df.shape[0] == 0:
+            df: pd.DataFrame = _normalize_cols(t.df)
+            if df is None or df.empty or df.shape[1] == 0:
                 continue
 
+            
             df.to_sql(name, conn.connection, if_exists="replace", index=False)
 
-            cols = list(map(str, df.columns))
-            rows = int(len(df))
+            cols = [str(c) for c in df.columns]
+            rows = int(df.shape[0])
             out_tables.append({"name": name, "columns": cols, "rows": rows})
 
             conn.execute(
-                text("""INSERT OR REPLACE INTO tables_metadata (dataset, name, columns, row_count)
-                        VALUES (:d,:n,:c,:r)"""),
+                SQL_UPSERT_METADATA,
                 {"d": ds_key, "n": name, "c": ",".join(cols), "r": rows},
             )
 
@@ -78,4 +102,8 @@ def ingest_excel_to_sqlite(xlsx_path: Path, dataset: str) -> dict:
         "dataset": ds_key,
         "sqlite_path": str(db_path),
         "tables": out_tables,
+        "diagnostics": {
+            "items": diag_items,
+            "summary": summary,
+        },
     }
