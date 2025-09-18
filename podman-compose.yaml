@@ -11,8 +11,9 @@ services:
       - "8000:8000"
     environment:
       SQLITE_FOLDER: /app/data/
-      OLLAMA_URL: https://openrouter.ai/api/v1
-      OLLAMA_MODEL: microsoft/phi-4
+      OLLAMA_URL_LOCAL: http://host.containers.internal:11434/api/chat
+      OLLAMA_URL_HOST: http://10.14.64.6:8080/api/chat
+      OLLAMA_MODEL: phi4
     volumes:
       - ./backend:/app/backend:Z
       - ./data:/app/data:Z
