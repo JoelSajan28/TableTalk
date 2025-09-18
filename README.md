@@ -60,3 +60,7 @@ uvicorn app.main:app --reload --port 8000
 cd frontend
 streamlit run app.py --server.port 8501
 ```
+
+## 🏗️ System Design
+
+![System Design](./System_Design.png)
