@@ -235,7 +235,7 @@ class ExcelPreprocessor:
                 if self.fill_merged_down and not df_part.empty:
                     # Forward-fill down on all columns; safe after header set
                     before_na = int(df_part.isna().sum().sum())
-                    df_part = df_part.ffill(axis=0)
+                    # df_part = df_part.ffill(axis=0)
                     after_na = int(df_part.isna().sum().sum())
                     if after_na < before_na:
                         self._emit_diag(
