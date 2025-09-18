@@ -15,8 +15,19 @@ def _safe_dataset(dataset: str) -> str:
 def db_path_for(dataset: str) -> Path:
     return SQLITE_FOLDER / f"{_safe_dataset(dataset)}.db"
 
-def get_engine_for(dataset: str) -> tuple[Engine, Path]:
+def get_engine_for(dataset: str, fresh: bool = False) -> tuple[Engine, Path]:
+    """
+    Return a SQLAlchemy engine + db path for a given dataset.
+    If `fresh=True`, delete any existing database file first.
+    """
     path = db_path_for(dataset)
     path.parent.mkdir(parents=True, exist_ok=True)
+
+    if fresh and path.exists():
+        try:
+            path.unlink()
+        except Exception as e:
+            raise RuntimeError(f"Failed to delete old DB {path}: {e}")
+
     engine = create_engine(f"sqlite:///{path}", future=True)
     return engine, path
